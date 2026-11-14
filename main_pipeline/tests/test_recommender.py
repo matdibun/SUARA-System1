@@ -45,7 +45,8 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual([rec.song_id for rec in result],
                          ["contained", "wider", "partial"])
         self.assertAlmostEqual(result[0].score, 1.0)
-        self.assertGreater(result[1].score, result[2].score)
+        self.assertAlmostEqual(result[1].score, 0.5849625007211562)
+        self.assertAlmostEqual(result[2].score, 0.2630344058337938)
         self.assertEqual(result[0].scoring_version, SCORING_VERSION)
         self.assertIn("not a probability", result[0].explanation)
 
