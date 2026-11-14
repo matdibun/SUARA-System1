@@ -270,36 +270,21 @@ boundaries, extraction version, source type and review status.
 
 ### Recommendation
 
-The teammate's rule supplies finite normalized scores and explanations, skips
-unsupported missing-data comparisons, and records its formula and limitations.
-Scores are not probabilities. The adapter returns a ranked unique catalog subset.
+T08 is implemented in main_pipeline/src/suara/mocks/recommender.py as
+pitch-range-overlap-v1. It scores the share of a verified song excerpt's
+semitone span covered by the observed vocal pitch range. It skips missing pitch,
+null ranges, unverified ranges, and songs with no overlap; it does not use MFCC
+or timbre features. The score is a heuristic, not a probability or comfort
+measure. The default fictional catalog has no ranges and returns no results.
+The implementation can be injected through PipelineDependencies. Its results
+remain mock whenever the profile or scored song range is mock. Tests compare the
+E3 pilot catalog's ordering with a naive song_id-order baseline; this is a
+sanity check, not user evaluation.
 
-```python
-from suara.contracts import Recommendation, SongFeatures, VoiceProfile
-from suara.errors import validate_top_k
-from my_team.scoring import score_supported_songs
-
-def recommend_songs(voice_profile: VoiceProfile,
-                    song_catalog: list[SongFeatures], top_k: int = 5):
-    validate_top_k(top_k)
-    voice_profile.validate()
-    for song in song_catalog:
-        song.validate()
-    # Each eligible song occurs once; missing pitch must be handled in this rule.
-    scored = score_supported_songs(voice_profile, song_catalog)
-    ranked = sorted(scored, key=lambda item: (-item[1], item[0].song_id))[:top_k]
-    return [Recommendation(
-        song_id=song.song_id, title=song.title, artist=song.artist,
-        score=float(score), explanation=explanation,
-        scoring_version='replace-with-reviewed-rule-version',
-        mode='mock' if voice_profile.analysis_mode == 'mock' or song.provenance == 'mock' else 'real',
-    ) for song, score, explanation in ranked]
-```
-
-An empty catalog must produce `[]`. Do not infer vocal suitability from unavailable
-pitch or unverified song melody ranges. A synthetic scorer must label itself and
-its outputs mock, disclose synthetic ranking in explanations, and never use the
-real-rule sketch to hide synthetic origin.
+For later integration, use only real-labeled pitch features and verified melody
+ranges when real mode is enabled. Keep explanations and scoring_version with
+each returned Recommendation, and evaluate the ranking with participant
+suitability ratings before making suitability claims.
 
 ## Recommended integration order
 
