@@ -17,7 +17,8 @@ def fixtures():
     audio = tiny_audio()
     pitch, timbre = analyze_pitch(audio), analyze_timbre(audio)
     profile = build_voice_profile(pitch, timbre)
-    song = mock_song_catalog()[0]
+    song = replace(mock_song_catalog()[0], melody_min_pitch_hz=110.0,
+                   melody_max_pitch_hz=220.0, provenance='verified_melody')
     rec = recommend_songs(profile, [song])[0]
     result = PipelineResult(voice_profile=profile, recommendations=[rec],
                             pipeline_version='test', analysis_mode='mock', processing_time_s=None)

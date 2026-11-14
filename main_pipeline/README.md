@@ -43,11 +43,15 @@ No trimming or denoising is applied. See the contract for exact thresholds.
 
 Mock pitch is always 110/330/220 Hz (min/max/median) with fixture voiced_ratio=0.8.
 Mock timbre is always 20 zeros and a fixture centroid of 1000 Hz. None of these
-numbers is extracted from the input. Five fictional catalog records have null
-melody ranges. Ranking sorts song_id ascending and assigns scores 0.9, 0.8, 0.7,
-0.6, 0.5 by position, independent of voice features. Every result is labeled mock
-and carries synthetic-output warnings/explanations. Real preprocessing warnings
-describe transformations actually applied to the audio.
+numbers is extracted from the input. The five fictional catalog records have null
+melody ranges, so the default CLI returns no suitability recommendations.
+The rule-based ranker compares observed pitch range with verified melody range:
+score = overlapping semitone span / the song excerpt's full semitone span.
+Songs with missing pitch, missing ranges, unverified ranges, or no range overlap
+are skipped. Results sort by descending score and then song_id. Scores are
+normalized heuristics, not probabilities or evidence of vocal comfort. Mock
+inputs or ranges retain mock provenance and explanations. Real preprocessing
+warnings describe transformations actually applied to the audio.
 
 ## Validation
 

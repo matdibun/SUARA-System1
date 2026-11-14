@@ -202,14 +202,22 @@ Optional future descriptors require a reviewed schema extension, not ad hoc keys
 | mode | `Mode` | mock when profile, catalog item, or ranking implementation is mock |
 | schema_version | `str` | 1.0.0 |
 
-Return at most top_k unique entries, ordered by descending score then ascending
-song_id (lexical tie-break). Empty catalog returns an empty list. Do not invent
-pitch matches for null pitch or unverified melody ranges. Initial Day 2 mock
-ranking uses fictional catalog entries, ascending song_id order and fixed fixture
-scores 0.9, 0.8, 0.7, 0.6, 0.5 by position (at most five). Reordering an input
-catalog does not change rank. It does not evaluate pitch or timbre suitability. No actual
-range-matching formula is proposed in Day 1. A later real rule must document its
-formula, missing-data behavior, normalization and evaluation limitations.
+T08 baseline rule (pitch-range-overlap-v1): for a voiced profile and a song
+with a verified melody range, convert each positive Hz endpoint to log2(Hz), so
+interval width is measured in semitones. Score = the overlap between the observed
+vocal span and the song's full melody span divided by the song span, clamped to
+[0,1]. A zero-width song range scores 1 only when its pitch is inside the observed
+range. Songs with no overlap are skipped. Return at most top_k unique entries,
+ordered by descending score then ascending song_id. Empty catalogs return [].
+
+Missing user pitch, null song endpoints, and provenance=unverified ranges are
+skipped; mock ranges may be scored only when explicitly present and every such
+recommendation remains mock. The default fictional catalog has null ranges, so it
+produces no recommendations. This score is a transparent range-only heuristic,
+not a probability, comfort measure, or evaluated suitability claim. It does not
+use MFCC/timbre features. A test compares the E3 catalog ranking with a naive
+baseline that sorts by song_id; this is a ranking sanity check, not participant
+evaluation. Real-labeled output requires a real profile and verified melody data.
 
 ## PipelineResult
 
@@ -441,9 +449,9 @@ all other examples are complete, including nested contracts and nullable fields.
   "song_id": "mock-001",
   "title": "Demo Song One (fictional)",
   "artist": "Mock Artist",
-  "score": 0.9,
-  "explanation": "Fixed mock rank; does not measure suitability for your voice.",
-  "scoring_version": "mock-fixed-v1",
+  "score": 0.75,
+  "explanation": "75.0% of this song excerpt's documented melody pitch span overlaps the observed vocal pitch range. This range-only heuristic is not a probability or evidence of comfort or suitability.",
+  "scoring_version": "pitch-range-overlap-v1",
   "mode": "mock",
   "schema_version": "1.0.0"
 }

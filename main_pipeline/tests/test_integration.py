@@ -29,6 +29,19 @@ def stub_catalog():
             for song in mock_song_catalog()]
 
 
+def verified_catalog():
+    return [
+        SongFeatures(song_id='test-a', title='Range A', artist='Test artist',
+                     melody_min_pitch_hz=150.0, melody_max_pitch_hz=250.0,
+                     feature_version='test-v1', provenance='verified_melody',
+                     source_description='Synthetic test fixture.'),
+        SongFeatures(song_id='test-b', title='Range B', artist='Test artist',
+                     melody_min_pitch_hz=200.0, melody_max_pitch_hz=400.0,
+                     feature_version='test-v1', provenance='verified_melody',
+                     source_description='Synthetic test fixture.'),
+    ]
+
+
 def stub_rank(profile, catalog, top_k=5):
     return [replace(rec, mode='real', scoring_version='test-only-stub',
                     explanation='Test-only wiring rank; no suitability claim.')
@@ -50,7 +63,7 @@ class IntegrationTests(SyntheticTestCase):
             self.assertIs(audio, seen['audio'])
             seen['timbre'] = analyze_timbre(audio)
             return seen['timbre']
-        catalog = mock_song_catalog()
+        catalog = verified_catalog()
         def rank(profile, songs, top_k=5):
             self.assertIs(profile.pitch, seen['pitch'])
             self.assertIs(profile.timbre, seen['timbre'])
@@ -64,13 +77,11 @@ class IntegrationTests(SyntheticTestCase):
         self.assertEqual(len(result.recommendations), 2)
         self.assertEqual(json.loads(result.to_json())['analysis_mode'], 'mock')
 
-    def test_top_k_and_catalog_order(self):
+    def test_missing_mock_ranges_and_top_k_validation(self):
         for top_k in (1, 2, 3, 4, 5):
             result = run_pipeline('unused', top_k=top_k, song_catalog=mock_song_catalog()[::-1],
                                   dependencies=dependencies())
-            self.assertEqual(len(result.recommendations), top_k)
-            self.assertEqual([r.song_id for r in result.recommendations],
-                             [s.song_id for s in mock_song_catalog()[:top_k]])
+            self.assertEqual(result.recommendations, [])
         for top_k in (True, 0, 6, None, 1., '2'):
             self.assert_error('invalid_configuration', lambda: run_pipeline('unused', top_k=top_k))
 
@@ -81,14 +92,15 @@ class IntegrationTests(SyntheticTestCase):
                               dependencies=dependencies(preprocess_audio=lambda *a, **kw: self.fail('called'))))
 
     def test_invalid_recommendation_references_metadata_ranking_and_count(self):
-        profile_result = run_pipeline('unused', dependencies=dependencies())
+        catalog = verified_catalog()
+        profile_result = run_pipeline('unused', song_catalog=catalog, dependencies=dependencies())
         a, b = profile_result.recommendations[:2]
         for recs in ([replace(a, song_id='missing')], [replace(a, title='wrong')],
                      [replace(a, artist='wrong')], [a, a], [b, a], {}, [object()]):
             with self.subTest(recs_type=type(recs).__name__):
-                self.assert_error('invalid_catalog', lambda: run_pipeline('unused',
+                self.assert_error('invalid_catalog', lambda: run_pipeline('unused', song_catalog=catalog,
                     dependencies=dependencies(recommend_songs=lambda *args, **kw: recs)))
-        self.assert_error('invalid_catalog', lambda: run_pipeline('unused', top_k=1,
+        self.assert_error('invalid_catalog', lambda: run_pipeline('unused', top_k=1, song_catalog=catalog,
             dependencies=dependencies(recommend_songs=lambda *args, **kw: [a, b])))
 
     def test_module_exceptions_are_safe_at_every_stage(self):
@@ -111,12 +123,11 @@ class IntegrationTests(SyntheticTestCase):
     def test_real_mode_has_no_fallback_or_declared_mock_components(self):
         self.assert_error('invalid_configuration', lambda: run_pipeline('unused', mode='real'))
         self.assert_error('invalid_configuration', lambda: run_pipeline('unused', mode='invalid'))
-        for name, mock in (('analyze_pitch', analyze_pitch), ('analyze_timbre', analyze_timbre),
-                           ('recommend_songs', recommend_songs)):
+        for name, mock in (('analyze_pitch', analyze_pitch), ('analyze_timbre', analyze_timbre)):
             deps = dict(analyze_pitch=stub_pitch, analyze_timbre=stub_timbre, recommend_songs=stub_rank)
             deps[name] = mock
             self.assert_error('invalid_configuration', lambda: run_pipeline('unused', mode='real',
-                song_catalog=stub_catalog(), dependencies=dependencies(**deps)))
+                song_catalog=verified_catalog(), dependencies=dependencies(**deps)))
 
     def test_real_mode_rejects_hidden_mock_outputs_and_mock_catalog(self):
         real_deps = dependencies(analyze_pitch=stub_pitch, analyze_timbre=stub_timbre,
@@ -124,17 +135,22 @@ class IntegrationTests(SyntheticTestCase):
         self.assert_error('invalid_configuration', lambda: run_pipeline('unused', mode='real',
             dependencies=real_deps, song_catalog=mock_song_catalog()))
         for name, wrapped in (('analyze_pitch', lambda a: analyze_pitch(a)),
-                              ('analyze_timbre', lambda a: analyze_timbre(a)),
-                              ('recommend_songs', lambda p, c, top_k=5: recommend_songs(p, c, top_k))):
+                              ('analyze_timbre', lambda a: analyze_timbre(a))):
             self.assert_error('invalid_configuration', lambda: run_pipeline('unused', mode='real',
-                song_catalog=stub_catalog(), dependencies=replace(real_deps, **{name: wrapped})))
+                song_catalog=verified_catalog(), dependencies=replace(real_deps, **{name: wrapped})))
+        def hidden_mock_rank(profile, catalog, top_k=5):
+            return [replace(rec, mode='mock')
+                    for rec in recommend_songs(profile, catalog, top_k)]
+        self.assert_error('invalid_configuration', lambda: run_pipeline('unused', mode='real',
+            song_catalog=verified_catalog(),
+            dependencies=replace(real_deps, recommend_songs=hidden_mock_rank)))
 
     def test_test_only_adapters_accept_real_mode_and_empty_catalog(self):
         deps = dependencies(analyze_pitch=stub_pitch, analyze_timbre=stub_timbre, recommend_songs=stub_rank)
         for catalog in ([], stub_catalog()):
             result = run_pipeline('unused', mode='real', dependencies=deps, song_catalog=catalog)
             self.assertEqual(result.analysis_mode, 'real')
-            self.assertEqual(len(result.recommendations), len(catalog))
+            self.assertEqual(result.recommendations, [])
             self.assertIn('Test-only', result.voice_profile.pitch.warnings[0])
 
     def test_song_export_adapter_hz_units_and_source_preserved(self):
@@ -150,7 +166,7 @@ class IntegrationTests(SyntheticTestCase):
         self.assertEqual((song.melody_min_pitch_hz, song.melody_max_pitch_hz), (440, 880))
         result = run_pipeline('unused', mode='real', song_catalog=[song], dependencies=dependencies(
             analyze_pitch=stub_pitch, analyze_timbre=stub_timbre, recommend_songs=stub_rank))
-        self.assertEqual(result.recommendations[0].song_id, song.song_id)
+        self.assertEqual(result.recommendations, [])
         self.assertEqual(song.source_description, source)
         self.assertEqual(song.provenance, 'unverified')
 
@@ -179,7 +195,7 @@ class IntegrationTests(SyntheticTestCase):
 
     def test_mixed_analyzer_provenance(self):
         for pitch, timbre in ((stub_pitch, analyze_timbre), (analyze_pitch, stub_timbre)):
-            result = run_pipeline('unused', dependencies=dependencies(analyze_pitch=pitch, analyze_timbre=timbre))
+            result = run_pipeline('unused', song_catalog=verified_catalog(), dependencies=dependencies(analyze_pitch=pitch, analyze_timbre=timbre))
             self.assertEqual(result.analysis_mode, 'mock')
             self.assertTrue(all(r.mode == 'mock' for r in result.recommendations))
             self.assertTrue(any('synthetic' in w.lower() for w in result.voice_profile.warnings))
@@ -188,7 +204,7 @@ class IntegrationTests(SyntheticTestCase):
         def dishonest(profile, catalog, top_k=5):
             return stub_rank(profile, catalog, top_k)
         dishonest.suara_mode = 'mock'
-        self.assert_error('invalid_catalog', lambda: run_pipeline('unused', song_catalog=stub_catalog(),
+        self.assert_error('invalid_catalog', lambda: run_pipeline('unused', song_catalog=verified_catalog(),
             dependencies=dependencies(analyze_pitch=stub_pitch, analyze_timbre=stub_timbre,
                                       recommend_songs=dishonest)))
 
@@ -251,7 +267,7 @@ class IntegrationTests(SyntheticTestCase):
                               song_catalog=stub_catalog())
         self.assertEqual(result.voice_profile.status, 'no_voiced_pitch')
         self.assertIsNone(result.voice_profile.pitch.median_pitch_hz)
-        self.assertTrue(all('No pitch/timbre suitability' in r.explanation for r in result.recommendations))
+        self.assertEqual(result.recommendations, [])
 
     def test_cli_success_errors_and_no_ai_imports(self):
         path = self.wav()

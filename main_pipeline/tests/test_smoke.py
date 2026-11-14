@@ -106,7 +106,7 @@ class PipelineSmokeTests(unittest.TestCase):
         path.write_bytes(changed)
         self.assert_code("invalid_audio", lambda: preprocess_audio(path))
 
-    def test_mock_end_to_end_determinism(self) -> None:
+    def test_mock_end_to_end_determinism_without_melody_ranges(self) -> None:
         path = self.wav()
         first, second = run_pipeline(path), run_pipeline(path)
         self.assertEqual(first.voice_profile, second.voice_profile)
@@ -114,16 +114,14 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertEqual(first.analysis_mode, "mock")
         self.assertEqual(first.voice_profile.pitch.mode, "mock")
         self.assertEqual(first.voice_profile.timbre.mode, "mock")
-        self.assertEqual(len(first.recommendations), 5)
-        self.assertEqual([r.score for r in first.recommendations], [0.9, 0.8, 0.7, 0.6, 0.5])
-        self.assertTrue(all(r.mode == "mock" for r in first.recommendations))
+        self.assertEqual(first.recommendations, [])
         self.assertEqual(json.loads(first.to_json())["schema_version"], "1.0.0")
         self.assertGreaterEqual(first.processing_time_s, 0)
 
     def test_empty_catalog_and_top_k(self) -> None:
         path = self.wav()
         self.assertEqual(run_pipeline(path, song_catalog=[]).recommendations, [])
-        self.assertEqual(len(run_pipeline(path, top_k=2).recommendations), 2)
+        self.assertEqual(run_pipeline(path, top_k=2).recommendations, [])
         self.assert_code("invalid_configuration", lambda: run_pipeline(path, top_k=True))
 
     def test_real_mode_does_not_fallback(self) -> None:
@@ -181,7 +179,7 @@ class PipelineSmokeTests(unittest.TestCase):
             "--mode", "mock", "--top-k", "2"], capture_output=True, text=True)
         self.assertEqual(valid.returncode, 0, valid.stderr)
         self.assertEqual(valid.stderr, "")
-        self.assertEqual(len(json.loads(valid.stdout)["recommendations"]), 2)
+        self.assertEqual(json.loads(valid.stdout)["recommendations"], [])
         invalid = subprocess.run([sys.executable, "-m", "suara.cli", "--audio", "missing.wav"],
             capture_output=True, text=True)
         self.assertEqual(invalid.returncode, 2)

@@ -13,7 +13,7 @@ to make them resemble application modules.
 | Timbre teammate | `AudioData` | `TimbreFeatures` | Implement agreed MFCC representation and centroid; record exact processing/model versions; do not reuse ECAPA identity vectors as MFCCs |
 | Song analysis/catalog teammate | Licensed/reviewed melody sources outside the runtime | `Sequence[SongFeatures]` | Map reviewed E3 note ranges to Hz; retain source/excerpt/verification information; export without pulling Python 3.11 models into the app |
 | Database teammate | Typed song/profile records | Catalog sequence, later persistence adapter | Preserve schema and feature versions; no DB required for the first local pipeline |
-| Recommendation teammate | Profile, catalog, `top_k` | `list[Recommendation]` | Return bounded, deterministic scores and evidence-based explanations; document scoring formula and limitations |
+| Recommendation | Profile, catalog, top_k | list[Recommendation] | Implemented pitch-range-overlap-v1: scores overlap of observed vocal and verified melody spans in semitone space; skips missing pitch, unverified/null ranges and no-overlap songs. Scores are heuristics, not probabilities or comfort claims. |
 | Main Pipeline Lead | WAV plus selected dependencies/catalog | `PipelineResult` | Preprocessing, validation, assembly, orchestration, mode enforcement, error mapping and CLI |
 
 ## Implement a callable adapter

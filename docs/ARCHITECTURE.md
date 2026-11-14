@@ -27,9 +27,12 @@ flowchart TD
     DEPS -.-> REC
 ```
 
-All runtime nodes above now have Day 2 implementations. Analysis and ranking are
-explicit deterministic mocks; preprocessing performs real audio transformations.
-Day 1 schemas remain unchanged. Real adapters are teammate work.
+All runtime nodes above now have implementations. Pitch/timbre analysis uses
+explicit deterministic mocks by default; preprocessing performs real audio
+transformations. The recommender applies the deterministic pitch-range-overlap
+rule to usable catalog/profile data and marks results mock whenever an input is
+mock. The default fictional catalog has no melody ranges and therefore yields no
+recommendations. Real pitch/timbre adapters remain teammate work.
 
 ## Package placement
 
